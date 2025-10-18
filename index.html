@@ -1,0 +1,198 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>kikis cool game</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+    #moveButton, #restartButton {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      font-size: 18px;
+      z-index: 10;
+    }
+    #restartButton {
+      display: none;
+    }
+    #gameOver {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translateX(-50%);
+;
+      z-index: 10;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="gameCanvas"></canvas>
+  <button id="moveButton">Move Up</button>
+  <div id="gameOver">Game Over</div>
+  <button id="restartButton">Restart</button>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const moveButton = document.getElementById("moveButton");
+    const restartButton = document.getElementById("restartButton");
+    const gameOverText = document.getElementById("gameOver");
+
+    let width, height;
+    const NUM_LINES = 3; // Number of horizontal bands
+
+    let leftWidths = [];      // Current left widths for each band
+    let rightWidths = [];     // Current right widths for each band
+    let leftTargets = [];     // Target left widths
+    let rightTargets = [];    // Target right widths
+
+    let dot = { x: 0, y: 0, radius: 10 };
+    let gameRunning = true;
+
+    function resizeCanvas() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    function resetGame() {
+      dot.x = width / 2;
+      dot.y = height - 30;
+      dot.radius = 10;
+      gameRunning = true;
+      gameOverText.style.display = "none";
+      restartButton.style.display = "none";
+      moveButton.style.display = "block";
+
+      // Initialize line widths and targets
+      leftWidths = [];
+      rightWidths = [];
+      leftTargets = [];
+      rightTargets = [];
+
+      for (let i = 0; i < NUM_LINES; i++) {
+        leftWidths[i] = 50;
+        rightWidths[i] = 50;
+        generateNewTargets(i);
+      }
+    }
+
+    function generateNewTargets(index) {
+      const halfWidth = width / 2;
+      const minWidth = 0.6 * halfWidth;
+      const maxWidth = 1.0 * halfWidth;
+      leftTargets[index] = Math.random() * (maxWidth - minWidth) + minWidth;
+      rightTargets[index] = Math.random() * (maxWidth - minWidth) + minWidth;
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, width, height);
+      const lineHeight = height / NUM_LINES;
+
+      for (let i = 0; i < NUM_LINES; i++) {
+        const y = i * lineHeight;
+
+        ctx.fillStyle = "orange";
+        // Draw left band
+        ctx.fillRect(0, y, leftWidths[i], lineHeight);
+        // Draw right band
+        ctx.fillRect(width - rightWidths[i], y, rightWidths[i], lineHeight);
+      }
+
+      // Draw the green dot
+      ctx.beginPath();
+      ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "green";
+      ctx.fill();
+      ctx.closePath();
+    }
+
+    function update(deltaTime) {
+      const speed = 0.3;
+
+      for (let i = 0; i < NUM_LINES; i++) {
+        // If close to target, pick new one
+        if (Math.abs(leftWidths[i] - leftTargets[i]) < 1) {
+          generateNewTargets(i);
+        }
+
+        // Animate toward target
+        leftWidths[i] += (leftTargets[i] - leftWidths[i]) * speed * deltaTime;
+        rightWidths[i] += (rightTargets[i] - rightWidths[i]) * speed * deltaTime;
+      }
+
+      // Collision detection — figure out which band the dot is in
+      const lineHeight = height / NUM_LINES;
+      const bandIndex = Math.floor(dot.y / lineHeight);
+
+      if (bandIndex >= 0 && bandIndex < NUM_LINES) {
+        const left = leftWidths[bandIndex];
+        const right = width - rightWidths[bandIndex];
+
+        if (dot.x - dot.radius < left || dot.x + dot.radius > right) {
+          endGame(); // Dot hit a wall in this band
+        }
+      }
+
+      // Win condition
+      if (dot.y - dot.radius < 0) {
+        endGame(true);
+      }
+    }
+
+    function endGame(won = false) {
+      gameRunning = false;
+      moveButton.style.display = "none";
+      gameOverText.textContent = won ? "You Win!" : "Game Over";
+      gameOverText.style.display = "block";
+      restartButton.style.display = "block";
+    }
+
+    // Move the dot up when spacebar is pressed
+document.addEventListener("keydown", (event) => {
+  if (!gameRunning) return;
+
+  // Check if spacebar is pressed
+  if (event.code === "Space") {
+    dot.y -= 10;
+    event.preventDefault(); // prevent page scroll if needed
+  }
+});
+
+
+    restartButton.addEventListener("click", () => {
+      resetGame();
+    });
+
+    let lastTime = performance.now();
+    function gameLoop(now) {
+      const deltaTime = (now - lastTime) / 16;
+      lastTime = now;
+
+      if (gameRunning) {
+        update(deltaTime);
+      }
+
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    resetGame();
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>

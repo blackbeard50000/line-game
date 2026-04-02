@@ -1,198 +1,285 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>kikis cool game</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-    }
-    canvas {
-      display: block;
-    }
-    #moveButton, #restartButton {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 10px 20px;
-      font-size: 18px;
-      z-index: 10;
-    }
-    #restartButton {
-      display: none;
-    }
-    #gameOver {
-      position: absolute;
-      top: 40%;
-      left: 50%;
-      transform: translateX(-50%);
-;
-      z-index: 10;
-      display: none;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>kikis cool game</title>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; }
+  canvas { display:block; background:#111; }
+  #moveButton, #restartButton {
+    position:absolute; bottom:20px; left:50%;
+    transform:translateX(-50%);
+    padding:10px 20px; font-size:18px;
+    z-index:10;
+  }
+  #restartButton { display:none; }
+  #gameOver {
+    position:absolute; top:40%; left:50%;
+    transform:translateX(-50%);
+    display:none; color:white; font-size:40px;
+  }
+</style>
 </head>
 <body>
 
-  <canvas id="gameCanvas"></canvas>
-  <button id="moveButton">Move Up</button>
-  <div id="gameOver">Game Over</div>
-  <button id="restartButton">Restart</button>
+<canvas id="gameCanvas"></canvas>
+<button id="moveButton">Move Up</button>
+<div id="gameOver">Game Over</div>
+<button id="restartButton">Restart</button>
 
-  <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    const moveButton = document.getElementById("moveButton");
-    const restartButton = document.getElementById("restartButton");
-    const gameOverText = document.getElementById("gameOver");
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const moveButton = document.getElementById("moveButton");
+const restartButton = document.getElementById("restartButton");
+const gameOverText = document.getElementById("gameOver");
 
-    let width, height;
-    const NUM_LINES = 3; // Number of horizontal bands
+let width, height;
+const NUM_LINES = 5;
 
-    let leftWidths = [];      // Current left widths for each band
-    let rightWidths = [];     // Current right widths for each band
-    let leftTargets = [];     // Target left widths
-    let rightTargets = [];    // Target right widths
+let leftWidths=[], rightWidths=[], leftTargets=[], rightTargets=[];
+let clearTimers = new Array(NUM_LINES).fill(0);
 
-    let dot = { x: 0, y: 0, radius: 10 };
-    let gameRunning = true;
+let dot = { x:0, y:0, radius:10 };
+let projectiles=[];
+let enemies=[];
+let explosions=[];
 
-    function resizeCanvas() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+let shootCooldown = 0;
+let gameRunning=true;
+
+function resizeCanvas(){
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+function resetGame(){
+  dot.x=width/2; dot.y=height-30;
+  projectiles=[]; enemies=[]; explosions=[];
+  clearTimers.fill(0);
+  shootCooldown=0;
+  gameRunning=true;
+
+  gameOverText.style.display="none";
+  restartButton.style.display="none";
+  moveButton.style.display="block";
+
+  for(let i=0;i<NUM_LINES;i++){
+    leftWidths[i]=50;
+    rightWidths[i]=50;
+    generateNewTargets(i);
+  }
+}
+
+function generateNewTargets(i){
+  const half=width/2;
+  const min=0.6*half;
+  const max=half;
+  leftTargets[i]=Math.random()*(max-min)+min;
+  rightTargets[i]=Math.random()*(max-min)+min;
+}
+
+function spawnEnemy(){
+  enemies.push({
+    x: Math.random()*width,
+    y: -20,
+    vx: (Math.random()-0.5)*4
+  });
+}
+
+function playBeep(freq){
+  const ctxAudio = new (window.AudioContext||window.webkitAudioContext)();
+  const osc = ctxAudio.createOscillator();
+  osc.frequency.value=freq;
+  osc.connect(ctxAudio.destination);
+  osc.start();
+  osc.stop(ctxAudio.currentTime+0.1);
+}
+
+function draw(){
+  ctx.clearRect(0,0,width,height);
+  const h=height/NUM_LINES;
+
+  // walls
+  for(let i=0;i<NUM_LINES;i++){
+    if(clearTimers[i]>0) continue;
+    let y=i*h;
+    ctx.fillStyle="orange";
+    ctx.fillRect(0,y,leftWidths[i],h);
+    ctx.fillRect(width-rightWidths[i],y,rightWidths[i],h);
+  }
+
+  // player ship
+  ctx.fillStyle="lime";
+  ctx.beginPath();
+  ctx.moveTo(dot.x, dot.y-dot.radius);
+  ctx.lineTo(dot.x-dot.radius, dot.y+dot.radius);
+  ctx.lineTo(dot.x+dot.radius, dot.y+dot.radius);
+  ctx.fill();
+
+  // flame
+  ctx.fillStyle="orange";
+  ctx.beginPath();
+  ctx.moveTo(dot.x, dot.y+dot.radius);
+  ctx.lineTo(dot.x-5, dot.y+dot.radius+10);
+  ctx.lineTo(dot.x+5, dot.y+dot.radius+10);
+  ctx.fill();
+
+  // bullets
+  ctx.fillStyle="cyan";
+  projectiles.forEach(p=>{
+    ctx.fillRect(p.x-2,p.y,4,10);
+  });
+
+  // ⭐ ENEMY STARSHIPS
+  enemies.forEach(e=>{
+    // body
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y - 10);
+    ctx.lineTo(e.x - 10, e.y + 10);
+    ctx.lineTo(e.x + 10, e.y + 10);
+    ctx.closePath();
+    ctx.fill();
+
+    // cockpit
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // wings
+    ctx.fillStyle = "darkred";
+    ctx.fillRect(e.x - 14, e.y + 5, 6, 3);
+    ctx.fillRect(e.x + 8, e.y + 5, 6, 3);
+
+    // flame
+    ctx.fillStyle = "orange";
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y + 10);
+    ctx.lineTo(e.x - 3, e.y + 16);
+    ctx.lineTo(e.x + 3, e.y + 16);
+    ctx.fill();
+  });
+
+  // explosions
+  explosions.forEach(ex=>{
+    ctx.beginPath();
+    ctx.arc(ex.x, ex.y, ex.size, 0, Math.PI*2);
+    ctx.fillStyle="yellow";
+    ctx.fill();
+  });
+}
+
+function update(dt){
+  const speed=0.3;
+  const h=height/NUM_LINES;
+
+  if(shootCooldown>0) shootCooldown-=dt;
+
+  // walls
+  for(let i=0;i<NUM_LINES;i++){
+    if(Math.abs(leftWidths[i]-leftTargets[i])<1 ||
+       Math.abs(rightWidths[i]-rightTargets[i])<1){
+      generateNewTargets(i);
     }
 
-    window.addEventListener("resize", resizeCanvas);
-    resizeCanvas();
+    leftWidths[i]+= (leftTargets[i]-leftWidths[i])*speed*dt;
+    rightWidths[i]+= (rightTargets[i]-rightWidths[i])*speed*dt;
 
-    function resetGame() {
-      dot.x = width / 2;
-      dot.y = height - 30;
-      dot.radius = 10;
-      gameRunning = true;
-      gameOverText.style.display = "none";
-      restartButton.style.display = "none";
-      moveButton.style.display = "block";
+    if(clearTimers[i]>0) clearTimers[i]-=dt;
+  }
 
-      // Initialize line widths and targets
-      leftWidths = [];
-      rightWidths = [];
-      leftTargets = [];
-      rightTargets = [];
+  // spawn enemies
+  if(Math.random()<0.02) spawnEnemy();
 
-      for (let i = 0; i < NUM_LINES; i++) {
-        leftWidths[i] = 50;
-        rightWidths[i] = 50;
-        generateNewTargets(i);
+  enemies.forEach(e=>{
+    e.y+=2;
+    e.x+=e.vx;
+
+    if(e.x<10 || e.x>width-10) e.vx*=-1;
+
+    if(Math.abs(e.x-dot.x)<15 && Math.abs(e.y-dot.y)<15){
+      endGame();
+    }
+  });
+
+  // bullets
+  projectiles.forEach(p=>{
+    p.y-=10;
+
+    let band=Math.floor(p.y/h);
+    if(band>=0 && band<NUM_LINES){
+      clearTimers[band]=120;
+    }
+
+    enemies.forEach(e=>{
+      if(Math.abs(p.x-e.x)<15 && Math.abs(p.y-e.y)<15){
+        explosions.push({x:e.x,y:e.y,size:5});
+        e.dead=true;
+        p.dead=true;
+        playBeep(600);
       }
+    });
+  });
+
+  explosions.forEach(ex=> ex.size+=2);
+
+  projectiles=projectiles.filter(p=>!p.dead && p.y>0);
+  enemies=enemies.filter(e=>!e.dead && e.y<height);
+  explosions=explosions.filter(ex=>ex.size<30);
+
+  let band=Math.floor(dot.y/h);
+  if(clearTimers[band]<=0){
+    let left=leftWidths[band];
+    let right=width-rightWidths[band];
+    if(dot.x-dot.radius<left || dot.x+dot.radius>right){
+      endGame();
     }
+  }
 
-    function generateNewTargets(index) {
-      const halfWidth = width / 2;
-      const minWidth = 0.6 * halfWidth;
-      const maxWidth = 1.0 * halfWidth;
-      leftTargets[index] = Math.random() * (maxWidth - minWidth) + minWidth;
-      rightTargets[index] = Math.random() * (maxWidth - minWidth) + minWidth;
-    }
+  if(dot.y<0) endGame(true);
+}
 
-    function draw() {
-      ctx.clearRect(0, 0, width, height);
-      const lineHeight = height / NUM_LINES;
+function endGame(win=false){
+  gameRunning=false;
+  moveButton.style.display="none";
+  gameOverText.textContent=win?"You Win!":"Game Over";
+  gameOverText.style.display="block";
+  restartButton.style.display="block";
+}
 
-      for (let i = 0; i < NUM_LINES; i++) {
-        const y = i * lineHeight;
+document.addEventListener("keydown",(e)=>{
+  if(!gameRunning) return;
 
-        ctx.fillStyle = "orange";
-        // Draw left band
-        ctx.fillRect(0, y, leftWidths[i], lineHeight);
-        // Draw right band
-        ctx.fillRect(width - rightWidths[i], y, rightWidths[i], lineHeight);
-      }
+  if(e.code==="Space") dot.y-=10;
+  if(e.code==="ArrowLeft") dot.x-=15;
+  if(e.code==="ArrowRight") dot.x+=15;
 
-      // Draw the green dot
-      ctx.beginPath();
-      ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
-      ctx.fillStyle = "green";
-      ctx.fill();
-      ctx.closePath();
-    }
-
-    function update(deltaTime) {
-      const speed = 0.3;
-
-      for (let i = 0; i < NUM_LINES; i++) {
-        // If close to target, pick new one
-        if (Math.abs(leftWidths[i] - leftTargets[i]) < 1) {
-          generateNewTargets(i);
-        }
-
-        // Animate toward target
-        leftWidths[i] += (leftTargets[i] - leftWidths[i]) * speed * deltaTime;
-        rightWidths[i] += (rightTargets[i] - rightWidths[i]) * speed * deltaTime;
-      }
-
-      // Collision detection — figure out which band the dot is in
-      const lineHeight = height / NUM_LINES;
-      const bandIndex = Math.floor(dot.y / lineHeight);
-
-      if (bandIndex >= 0 && bandIndex < NUM_LINES) {
-        const left = leftWidths[bandIndex];
-        const right = width - rightWidths[bandIndex];
-
-        if (dot.x - dot.radius < left || dot.x + dot.radius > right) {
-          endGame(); // Dot hit a wall in this band
-        }
-      }
-
-      // Win condition
-      if (dot.y - dot.radius < 0) {
-        endGame(true);
-      }
-    }
-
-    function endGame(won = false) {
-      gameRunning = false;
-      moveButton.style.display = "none";
-      gameOverText.textContent = won ? "You Win!" : "Game Over";
-      gameOverText.style.display = "block";
-      restartButton.style.display = "block";
-    }
-
-    // Move the dot up when spacebar is pressed
-document.addEventListener("keydown", (event) => {
-  if (!gameRunning) return;
-
-  // Check if spacebar is pressed
-  if (event.code === "Space") {
-    dot.y -= 10;
-    event.preventDefault(); // prevent page scroll if needed
+  if(e.key.toLowerCase()==="k" && shootCooldown<=0){
+    projectiles.push({x:dot.x,y:dot.y});
+    shootCooldown=20;
+    playBeep(800);
   }
 });
 
+moveButton.onclick=()=>{ if(gameRunning) dot.y-=10; };
+restartButton.onclick=resetGame;
 
-    restartButton.addEventListener("click", () => {
-      resetGame();
-    });
+let last=performance.now();
+function loop(now){
+  let dt=(now-last)/16;
+  last=now;
+  if(gameRunning) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
 
-    let lastTime = performance.now();
-    function gameLoop(now) {
-      const deltaTime = (now - lastTime) / 16;
-      lastTime = now;
+resetGame();
+requestAnimationFrame(loop);
+</script>
 
-      if (gameRunning) {
-        update(deltaTime);
-      }
-
-      draw();
-      requestAnimationFrame(gameLoop);
-    }
-
-    resetGame();
-    requestAnimationFrame(gameLoop);
-  </script>
 </body>
 </html>
